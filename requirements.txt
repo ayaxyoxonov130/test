@@ -1,2 +1,3 @@
 python-telegram-bot==20.0  # 2022-yil 11-noyabrda chiqarilgan
 pyrogram==1.3.0             # 2023-yil 23-mayda chiqarilgan
+aiogram
