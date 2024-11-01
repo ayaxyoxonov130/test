@@ -1,46 +1,52 @@
-from aiogram import Bot, Dispatcher, types
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher import filters
-from aiogram.dispatcher import State
-from aiogram.utils import executor
-import app  # app.py dan funksiyalarni chaqirish uchun
+import telebot
+import os
+from pydub import AudioSegment
+import speech_recognition as sr
+from gtts import gTTS
 
-# Bot tokenini belgilang
-TOKEN = '7781176427:AAHmiWvljlPZAvg9Wy4VvhbzGG9oNfWFQ-s'  # Bot tokenini o'zgartiring
-bot = Bot(token=TOKEN)
-storage = MemoryStorage()
-dp = Dispatcher(bot, storage=storage)
+# Bot tokenini kiriting
+bot_token = '7781176427:AAHmiWvljlPZAvg9Wy4VvhbzGG9oNfWFQ-s'
+bot = telebot.TeleBot(bot_token)
 
-# Davomiylik holatlarini belgilash
-class AccountState(State):
-    waiting_for_account_info = State()
+@bot.message_handler(content_types=['voice'])
+def handle_voice_message(message):
+    # Ovozli xabarni yuklab olish
+    file_info = bot.get_file(message.voice.file_id)
+    downloaded_file = bot.download_file(file_info.file_path)
 
-# /start komandasini qayta ishlash
-@dp.message_handler(commands=['start'])
-async def start(message: types.Message):
-    await message.reply("Salom! Iltimos, hisob ma'lumotlaringizni yuboring (API ID, API Hash, telefon raqami).")
-    await AccountState.waiting_for_account_info.set()  # Davomiylik holatiga o'tish
+    # Ovozli xabarni saqlash
+    with open('voice.ogg', 'wb') as new_file:
+        new_file.write(downloaded_file)
 
-# Hisob ma'lumotlarini qabul qilish
-@dp.message_handler(state=AccountState.waiting_for_account_info, content_types=types.ContentTypes.TEXT)
-async def receive_account_info(message: types.Message, state: FSMContext):
-    account_info = message.text.split(',')
-    
-    if len(account_info) != 3:
-        await message.reply('Iltimos, hisob ma\'lumotlaringizni to\'g\'ri formatda kiriting: "API ID, API Hash, Telefon raqami".')
-        return
+    # Ovozli xabarni .wav formatiga aylantirish
+    audio = AudioSegment.from_file('voice.ogg', format='ogg')
+    audio.export('voice.wav', format='wav')
 
-    api_id, api_hash, phone_number = [info.strip() for info in account_info]
-    app.start_bot(api_id, api_hash, phone_number)  # app.py da funktsiyani chaqirish
-    await message.reply('Hisob ma\'lumotlaringiz qabul qilindi! Bot ishga tushmoqda...')
+    # Ovozli xabarni matnga o‘girish
+    recognizer = sr.Recognizer()
+    with sr.AudioFile('voice.wav') as source:
+        audio_data = recognizer.record(source)
+        try:
+            text = recognizer.recognize_google(audio_data, language='uz-UZ')
+            print("Ovozli xabarda aytilgan:", text)
+        except sr.UnknownValueError:
+            text = "Tushunarsiz xabar"
+        except sr.RequestError:
+            text = "Xatolik: API bilan muammo yuz berdi"
 
-    # Davomiylik holatini tozalash
-    await state.finish()
+    # Matnni ovozli javobga aylantirish
+    response_text = "Vaalaykum assalom, nima xizmat?"
+    tts = gTTS(response_text, lang='uz')
+    tts.save('response.ogg')
 
-def main():
-    # Botni ishga tushirish
-    executor.start_polling(dp, skip_updates=True)
+    # Ovozli javobni foydalanuvchiga yuborish
+    with open('response.ogg', 'rb') as audio_response:
+        bot.send_voice(message.chat.id, audio_response)
 
-if __name__ == '__main__':
-    main()
+    # Vaqtinchalik fayllarni o‘chirish
+    os.remove('voice.ogg')
+    os.remove('voice.wav')
+    os.remove('response.ogg')
+
+# Botni ishga tushirish
+bot.polling()
